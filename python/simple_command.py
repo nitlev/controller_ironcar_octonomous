@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from argparse import ArgumentParser
 from collections import deque
@@ -7,9 +8,9 @@ from os.path import isfile
 
 import Adafruit_PCA9685
 import numpy as np
-import os
 
-from python.capture import Capture, StubCapture, build_capture
+from python.domain.imagestream import SavedImageStream
+from python.infrastructure.filesystem import create_output_dir
 
 logger = logging.getLogger('controller_ironcar')
 
@@ -104,24 +105,17 @@ def run(resolution, model_path, speed, preview, capture_stream, regression):
     from keras.models import load_model
 
     # Objects Initialisation
-    # Camera
-    cam, cam_output, stream = init_cam(resolution)
     # Model
     model = load_model(model_path)
     # Arduino
     pwm = Adafruit_PCA9685.PCA9685()
     pwm.set_pwm_freq(60)
 
-    # Start loop
-    if preview:
-        cam.start_preview()
-
-    capture = build_capture(DEFAULT_HOME, capture_stream)
-
-    # initialiser un dossier stream avec un timestamp et un random
+    # Camera
+    cam_output, stream = init_cam(resolution, capture_stream, preview)
 
     timer(seconds=5)
-    start_run(stream, pwm, model, cam_output, capture, speed, regression)
+    start_run(stream, pwm, model, cam_output, speed, regression)
 
 
 def timer(seconds=5):
@@ -131,16 +125,23 @@ def timer(seconds=5):
     logging.info("GO !")
 
 
-def init_cam(resolution=(250, 70)):
+def init_cam(resolution=(250, 70), capture_stream=False, preview=False):
     cam = picamera.PiCamera(resolution=resolution, framerate=60)
     cam.awb_mode = 'auto'
     cam_output = picamera.array.PiRGBArray(cam, size=resolution)
     stream = cam.capture_continuous(cam_output, format='rgb',
                                     use_video_port=True)
-    return cam, cam_output, stream
+    if capture_stream:
+        output_dir = create_output_dir(DEFAULT_HOME)
+        stream = SavedImageStream(stream, output_dir)
+
+    if preview:
+        cam.start_preview()
+
+    return cam_output, stream
 
 
-def start_run(stream, pwm, model, cam_output, capture, speed, regression):
+def start_run(stream, pwm, model, cam_output, speed, regression):
     start = time.time()
     pred_queue = deque(maxlen=4)
     img_queue = deque(maxlen=IMG_QUEUE_LENGTH)
@@ -148,12 +149,6 @@ def start_run(stream, pwm, model, cam_output, capture, speed, regression):
         """
         :type index_capture: int
         """
-        try:
-            capture.save(rgb_data=pict.array, index_capture=index_capture)
-        except Exception as exception:
-            logger.warning('capture picture fails to save - index_capture={}'.format(index_capture))
-            logger.warning('exception={}'.format(exception))
-
         try:
             img_queue.append(crop(pict))
             if index_capture % IMG_QUEUE_LENGTH == 0:
@@ -185,10 +180,10 @@ def control_car(pwm, img_queue, model, speed, regression, queue):
     logging.info(pred)
 
     direction = direction_command_from_pred(pred, regression)
-    #direction = smooth_direction(direction, queue)
+    # direction = smooth_direction(direction, queue)
     logging.info("direction: {}".format(direction))
 
-    #speed = int(speed_control(direction, speed))
+    # speed = int(speed_control(direction, speed))
     logging.info("speed: {}".format(speed))
 
     pwm.set_pwm(2, 0, direction)
