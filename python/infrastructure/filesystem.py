@@ -26,7 +26,7 @@ class FileSystemDirectory(Directory):
         return self.path
 
 
-def create_output_dir(path, subdir=None):
+def create_output_dir(path: str, subdir=None):
     if subdir is None:
         date = datetime.now()
         timestamp = (date - datetime(1970, 1, 1)).total_seconds()

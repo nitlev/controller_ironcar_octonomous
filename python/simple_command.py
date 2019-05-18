@@ -9,10 +9,8 @@ from os.path import isfile
 import Adafruit_PCA9685
 import numpy as np
 
-from python.domain.imagestream import SavedImageStream
-from python.infrastructure.filesystem import create_output_dir
-
-logger = logging.getLogger('controller_ironcar')
+from python.domain.camera import Camera
+from python.infrastructure.picamera import PiCamera
 
 try:
     import picamera.array
@@ -20,6 +18,11 @@ except ImportError:
     print("Can't import picamera, "
           "you probably should be running this on the IronCar or install the "
           "picamera library")
+
+from python.domain.imagestream import SavedImageStream
+from python.infrastructure.filesystem import create_output_dir
+
+logger = logging.getLogger('controller_ironcar')
 
 DEFAULT_RESOLUTION = 240, 176
 DEFAULT_HOME = os.path.realpath(os.path.join(os.getcwd(), 'outputs'))
@@ -68,7 +71,7 @@ def load_args():
     parser.add_argument('--preview', '-p', dest='preview',
                         action='store_true', default=DEFAULT_PREVIEW,
                         help='if given, camera input will be displayed')
-    parser.add_argument('--capture-stream', '-c', dest='capture_stream',
+    parser.add_argument('--capture-image_stream', '-c', dest='capture_stream',
                         action='store_true', default=DEFAULT_CAPTURE,
                         help='if given, camera input will be saved to filesystem')
     parser.add_argument('--regression', '-R', dest='regression',
@@ -110,12 +113,11 @@ def run(resolution, model_path, speed, preview, capture_stream, regression):
     # Arduino
     pwm = Adafruit_PCA9685.PCA9685()
     pwm.set_pwm_freq(60)
-
     # Camera
-    cam_output, stream = init_cam(resolution, capture_stream, preview)
+    camera = PiCamera(resolution, capture_stream, DEFAULT_HOME, preview)
 
     timer(seconds=5)
-    start_run(stream, pwm, model, cam_output, speed, regression)
+    start_run(camera, pwm, model, speed, regression)
 
 
 def timer(seconds=5):
@@ -141,11 +143,11 @@ def init_cam(resolution=(250, 70), capture_stream=False, preview=False):
     return cam_output, stream
 
 
-def start_run(stream, pwm, model, cam_output, speed, regression):
+def start_run(camera: Camera, pwm, model, speed, regression):
     start = time.time()
     pred_queue = deque(maxlen=4)
     img_queue = deque(maxlen=IMG_QUEUE_LENGTH)
-    for index_capture, pict in enumerate(stream):
+    for index_capture, pict in enumerate(camera.image_stream()):
         """
         :type index_capture: int
         """
@@ -154,10 +156,8 @@ def start_run(stream, pwm, model, cam_output, speed, regression):
             if index_capture % IMG_QUEUE_LENGTH == 0:
                 control_car(pwm, img_queue, model, speed,
                             regression, pred_queue)
-            cam_output.truncate(0)
         except KeyboardInterrupt:
             stop_car(pwm)
-            cam_output.truncate(0)
             stop = time.time()
             elapsed_time = stop - start
             logging.info("Image per second: {}".format(index_capture / elapsed_time))
