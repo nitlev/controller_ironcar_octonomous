@@ -7,5 +7,5 @@ class Camera:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def image_stream(self, capture_stream=False, output_dir=None) -> ImageStream:
+    def image_stream(self) -> ImageStream:
         raise NotImplementedError

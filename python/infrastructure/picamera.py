@@ -1,6 +1,5 @@
 from python.domain.camera import Camera
-from python.domain.imagestream import SavedImageStream, ImageStream
-from python.infrastructure.filesystem import create_output_dir
+from python.domain.imagestream import ImageStream
 
 try:
     import picamera.array
@@ -20,12 +19,8 @@ class PiCamera(Camera):
         if preview:
             self._cam.start_preview()
 
-    def image_stream(self, capture_stream=False, output_dir=None):
+    def image_stream(self):
         stream = PiCameraImageStream(self._cam, self.resolution)
-        if capture_stream:
-            output_dir = create_output_dir(output_dir)
-            stream = SavedImageStream(stream, output_dir)
-
         return stream
 
 

@@ -10,6 +10,7 @@ import Adafruit_PCA9685
 import numpy as np
 
 from python.domain.camera import Camera
+from python.infrastructure.filesystem.capture import AsyncFileSystemCapture
 from python.infrastructure.picamera import PiCamera
 
 try:
@@ -18,9 +19,6 @@ except ImportError:
     print("Can't import picamera, "
           "you probably should be running this on the IronCar or install the "
           "picamera library")
-
-from python.domain.imagestream import SavedImageStream
-from python.infrastructure.filesystem import create_output_dir
 
 logger = logging.getLogger('controller_ironcar')
 
@@ -114,10 +112,12 @@ def run(resolution, model_path, speed, preview, capture_stream, regression):
     pwm = Adafruit_PCA9685.PCA9685()
     pwm.set_pwm_freq(60)
     # Camera
-    camera = PiCamera(resolution, capture_stream, DEFAULT_HOME, preview)
+    camera = PiCamera(resolution, preview)
 
-    timer(seconds=5)
-    start_run(camera, pwm, model, speed, regression)
+    # Start and capture run
+    with AsyncFileSystemCapture(output_dir=DEFAULT_HOME, capture_stream=capture_stream) as capture:
+        timer(seconds=5)
+        start_run(camera, pwm, model, speed, regression, capture)
 
 
 def timer(seconds=5):
@@ -127,35 +127,18 @@ def timer(seconds=5):
     logging.info("GO !")
 
 
-def init_cam(resolution=(250, 70), capture_stream=False, preview=False):
-    cam = picamera.PiCamera(resolution=resolution, framerate=60)
-    cam.awb_mode = 'auto'
-    cam_output = picamera.array.PiRGBArray(cam, size=resolution)
-    stream = cam.capture_continuous(cam_output, format='rgb',
-                                    use_video_port=True)
-    if capture_stream:
-        output_dir = create_output_dir(DEFAULT_HOME)
-        stream = SavedImageStream(stream, output_dir)
-
-    if preview:
-        cam.start_preview()
-
-    return cam_output, stream
-
-
-def start_run(camera: Camera, pwm, model, speed, regression):
+def start_run(camera: Camera, pwm, model, speed, regression, capture):
     start = time.time()
     pred_queue = deque(maxlen=4)
     img_queue = deque(maxlen=IMG_QUEUE_LENGTH)
     for index_capture, pict in enumerate(camera.image_stream()):
-        """
-        :type index_capture: int
-        """
         try:
-            img_queue.append(crop(pict))
+            cropped_pict = crop(pict)
+            img_queue.append(cropped_pict)
             if index_capture % IMG_QUEUE_LENGTH == 0:
                 control_car(pwm, img_queue, model, speed,
                             regression, pred_queue)
+            capture.save_image(cropped_pict)
         except KeyboardInterrupt:
             stop_car(pwm)
             stop = time.time()
@@ -180,7 +163,7 @@ def control_car(pwm, img_queue, model, speed, regression, queue):
     logging.info(pred)
 
     direction = direction_command_from_pred(pred, regression)
-    # direction = smooth_direction(direction, queue)
+    # direction = smooth_direction(direction, image_queue)
     logging.info("direction: {}".format(direction))
 
     # speed = int(speed_control(direction, speed))
