@@ -10,7 +10,7 @@ import Adafruit_PCA9685
 import numpy as np
 
 from python.domain.camera import Camera
-from python.infrastructure.filesystem.capture import AsyncFileSystemCaptureContext, open_capture
+from python.infrastructure.filesystem.capture import start_capture
 from python.infrastructure.picamera import PiCamera
 
 try:
@@ -115,7 +115,7 @@ def run(resolution, model_path, speed, preview, capture_stream, regression):
     camera = PiCamera(resolution, preview)
 
     # Start and capture run
-    with open_capture(output_dir=DEFAULT_HOME, capture_stream=capture_stream) as capture:
+    with start_capture(output_dir=DEFAULT_HOME, capture_stream=capture_stream) as capture:
         timer(seconds=5)
         start_run(camera, pwm, model, speed, regression, capture)
 

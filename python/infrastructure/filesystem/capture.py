@@ -11,7 +11,7 @@ from python.infrastructure.filesystem.directory import create_output_dir
 logger = logging.getLogger('controller_ironcar')
 
 
-def open_capture(output_dir, capture_stream=False):
+def start_capture(output_dir, capture_stream=False):
     manager = multiprocessing.Manager()
     image_queue = manager.Queue()
 
